@@ -7,12 +7,14 @@ const OpenAI = require("openai");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-if (!process.env.OPENAI_API_KEY) {
+const apiKey = process.env.OPENAI_API_KEY;
+
+if (!apiKey) {
   console.warn("WARNING: OPENAI_API_KEY is not set.");
 }
 
 const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey
 });
 
 app.use(cors());
@@ -40,7 +42,7 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!apiKey) {
       return res.status(500).json({
         error: "OPENAI_API_KEY is not configured on the server."
       });
@@ -48,19 +50,17 @@ app.post("/api/chat", async (req, res) => {
 
     const safeHistory = Array.isArray(history)
       ? history
-          .filter(item =>
-            item &&
-            (item.role === "user" || item.role === "assistant") &&
-            typeof item.content === "string"
+          .filter(
+            (item) =>
+              item &&
+              (item.role === "user" || item.role === "assistant") &&
+              typeof item.content === "string"
           )
           .slice(-20)
       : [];
 
     const input = [
-      ...safeHistory.map(item => ({
-        role: item.role,
-        content: item.content
-      })),
+      ...safeHistory,
       {
         role: "user",
         content: message
@@ -69,21 +69,34 @@ app.post("/api/chat", async (req, res) => {
 
     const response = await client.responses.create({
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+
       instructions:
         "You are GKP AI, a friendly personal AI assistant. " +
-        "Reply naturally and helpfully. The user prefers Hindi/Hinglish, " +
-        "so answer in Hindi/Hinglish when appropriate. Keep answers clear and useful.",
+        "Reply naturally and helpfully. " +
+        "The user prefers Hindi/Hinglish, so answer in Hindi/Hinglish when appropriate. " +
+        "Keep answers clear, useful and concise.",
+
       input
     });
 
+    const reply = response.output_text;
+
+    if (!reply) {
+      return res.status(500).json({
+        error: "AI returned an empty response."
+      });
+    }
+
     res.json({
-      reply: response.output_text || "Mujhe abhi response nahi mila."
+      reply
     });
   } catch (error) {
     console.error("GKP AI error:", error);
 
     res.status(500).json({
-      error: error?.message || "AI request failed."
+      error:
+        error?.message ||
+        "AI request failed. Please check the Render logs."
     });
   }
 });
